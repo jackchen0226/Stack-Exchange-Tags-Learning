@@ -7,7 +7,6 @@ from nltk.corpus import stopwords
 import bprofile
 import csv
 
-
 def main():
     Test = pd.read_csv('data/robotics.csv')
     all_tags = " ".join(Test['tags'].tolist())
@@ -51,6 +50,7 @@ def main():
         for i in tags:
             tokens.append(i.split("-"))
         return tokens
+
     print('ready')
     inner()
     print('tokensdone')
@@ -59,11 +59,3 @@ def main():
 if __name__ == '__main__':
     with bprofile.BProfile("profile2.png"):
         main()
-
-'''
-for i in range(Test.shape[0]):
-
-    # To remove newline characters and to use nltk's Text type
-    text = nltk.Text(tokens)
-'''
-
