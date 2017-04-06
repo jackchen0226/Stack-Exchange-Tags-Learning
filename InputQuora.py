@@ -6,6 +6,7 @@ from nltk import word_tokenize
 import pickle
 import bprofile
 
+
 Train = pd.read_csv("QuoraData/train.csv")
 #Train = Train[:9600]
 
@@ -41,7 +42,7 @@ def generate_features():
 	q1_tokens = pickle.load(qpkl)
 	qpkl.close()
 
-	qpkl = open('q1.pkl', 'rb')
+	qpkl = open('q2.pkl', 'rb')
 	q2_tokens = pickle.load(qpkl)
 	qpkl.close()
 
@@ -52,7 +53,7 @@ def generate_features():
 		
 		# Need matching words, pronoun existence as features.
 		# 0: no pronouns, 1: pronoun in q1, 2: pronoun in q2, 3: both have pronouns
-		for i in pronouns:
+		"""for i in pronouns:
 			if i not in q1_tokens[row['id']] and i not in q2_tokens[row['id']]:
 				features[0] = True
 			if i in q1_tokens[row['id']] and i not in q2_tokens[row['id']]:
@@ -60,11 +61,10 @@ def generate_features():
 			if i not in q2_tokens[row['id']] and i in q2_tokens[row['id']]:
 				features[2] = True
 			if i in q1_tokens[row['id']] and i in q2_tokens[row['id']]:
-				features[3] = True
+				features[3] = True"""
 		return features
 
 	return num_features, get_features
-
 
 
 num_features, get_features = generate_features()
