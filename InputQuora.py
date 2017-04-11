@@ -63,7 +63,6 @@ def generate_features():
 			if i in q1_tokens[row['id']] and i in q2_tokens[row['id']]:
 				features[3] = True"""
 		return features
-
 	return num_features, get_features
 
 
@@ -88,8 +87,9 @@ def main():
 	split = len(Train) * 9 // 10
 	gen, gen_len = make_train_generator(Train[:split])
 	val_gen, val_len = make_train_generator(Train[split:])
-	k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=5,
+	k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=1,
 			validation_data=val_gen, validation_steps=val_len)
+	#k.evaluate()
 
 
 if __name__ == '__main__':
