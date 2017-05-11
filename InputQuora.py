@@ -3,12 +3,17 @@ import keras.backend as K
 import pandas as pd
 import numpy as np
 from nltk import word_tokenize
+#from nltk.corpus import stopwords
+#from nltk.stem import SnowballStemmer
 import pickle
 #import bprofile
 from collections import defaultdict
+#import re
+#from string import punctuation
 
 
-Train = pd.read_csv("QuoraData/train.csv")
+
+Train = pd.read_csv("QuoraData/train.csv")							     
 Train.fillna('')
 #Train = Train[:9600]
 
@@ -38,17 +43,6 @@ def make_train_generator(train_data):
 
 
 def generate_features():
-	word_to_index = {}
-	'''
-	pronouns = ['he', 'she', 'it', 'they', 'i']
-	qpkl = open('q1.pkl', 'rb')
-	q1_tokens = pickle.load(qpkl)
-	qpkl.close()
-
-	qpkl = open('q2.pkl', 'rb')
-	q2_tokens = pickle.load(qpkl)
-	qpkl.close()'''
-	
 	sent = {}
 	for i in range(len(Train)):
 		if Train['question2'].iloc[i] != str:
@@ -108,7 +102,7 @@ def generate_features():
 
 num_features, get_features = generate_features()
 def getModel():
-	ins = keras.layers.Input((num_features,))
+	ins = keras.layers.Input((6,))
 	x = ins
 	x = keras.layers.Dense(100)(x)
 	x = keras.layers.Activation('relu')(x)
@@ -125,10 +119,14 @@ def getModel():
 def main():
 	k = getModel()
 	split = len(Train) * 9 // 10
+	score = k.predict(x=Train.as_matrix())
+	print(score)
 	gen, gen_len = make_train_generator(Train[:split])
 	val_gen, val_len = make_train_generator(Train[split:])
-	k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=10,
+	k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=6,
 			validation_data=val_gen, validation_steps=val_len)
+	#score = k.predict(x=Train.as_matrix())
+	#print(score)
 	#k.evaluate()
 
 
