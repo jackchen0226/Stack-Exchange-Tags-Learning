@@ -3,19 +3,122 @@ import keras.backend as K
 import pandas as pd
 import numpy as np
 from nltk import word_tokenize
-#from nltk.corpus import stopwords
-#from nltk.stem import SnowballStemmer
+from nltk.corpus import stopwords
+from nltk.stem import SnowballStemmer
 import pickle
 #import bprofile
 from collections import defaultdict
-#import re
-#from string import punctuation
+import re
+from string import punctuation
 
 
-
-Train = pd.read_csv("QuoraData/train.csv")							     
-Train.fillna('')
+Train = pd.read_csv("QuoraData/train.csv")
+Train = Train.fillna('')
+stop_words = stopwords.words('english')
 #Train = Train[:9600]
+
+
+# Currie32's text cleaning
+def text_to_wordlist(text, remove_stop_words=True, stem_words=False):
+    # Clean the text, with the option to remove stop_words and to stem words.
+
+    # Clean the text
+    text = re.sub(r"[^A-Za-z0-9]", " ", text)
+    text = re.sub(r"what's", "", text)
+    text = re.sub(r"What's", "", text)
+    text = re.sub(r"\'s", " ", text)
+    text = re.sub(r"\'ve", " have ", text)
+    text = re.sub(r"can't", "cannot ", text)
+    text = re.sub(r"n't", " not ", text)
+    text = re.sub(r"I'm", "I am", text)
+    text = re.sub(r" m ", " am ", text)
+    text = re.sub(r"\'re", " are ", text)
+    text = re.sub(r"\'d", " would ", text)
+    text = re.sub(r"\'ll", " will ", text)
+    text = re.sub(r"60k", " 60000 ", text)
+    text = re.sub(r" e g ", " eg ", text)
+    text = re.sub(r" b g ", " bg ", text)
+    text = re.sub(r"\0s", "0", text)
+    text = re.sub(r" 9 11 ", "911", text)
+    text = re.sub(r"e-mail", "email", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    text = re.sub(r"quikly", "quickly", text)
+    text = re.sub(r" usa ", " America ", text)
+    text = re.sub(r" USA ", " America ", text)
+    text = re.sub(r" u s ", " America ", text)
+    text = re.sub(r" uk ", " England ", text)
+    text = re.sub(r" UK ", " England ", text)
+    text = re.sub(r"india", "India", text)
+    text = re.sub(r"switzerland", "Switzerland", text)
+    text = re.sub(r"china", "China", text)
+    text = re.sub(r"chinese", "Chinese", text) 
+    text = re.sub(r"imrovement", "improvement", text)
+    text = re.sub(r"intially", "initially", text)
+    text = re.sub(r"quora", "Quora", text)
+    text = re.sub(r" dms ", "direct messages ", text)  
+    text = re.sub(r"demonitization", "demonetization", text) 
+    text = re.sub(r"actived", "active", text)
+    text = re.sub(r"kms", " kilometers ", text)
+    text = re.sub(r"KMs", " kilometers ", text)
+    text = re.sub(r" cs ", " computer science ", text) 
+    text = re.sub(r" upvotes ", " up votes ", text)
+    text = re.sub(r" iPhone ", " phone ", text)
+    text = re.sub(r"\0rs ", " rs ", text) 
+    text = re.sub(r"calender", "calendar", text)
+    text = re.sub(r"ios", "operating system", text)
+    text = re.sub(r"gps", "GPS", text)
+    text = re.sub(r"gst", "GST", text)
+    text = re.sub(r"programing", "programming", text)
+    text = re.sub(r"bestfriend", "best friend", text)
+    text = re.sub(r"dna", "DNA", text)
+    text = re.sub(r"III", "3", text) 
+    text = re.sub(r"the US", "America", text)
+    text = re.sub(r"Astrology", "astrology", text)
+    text = re.sub(r"Method", "method", text)
+    text = re.sub(r"Find", "find", text) 
+    text = re.sub(r"banglore", "Banglore", text)
+    text = re.sub(r" J K ", " JK ", text)
+    
+    # Remove punctuation from text
+    text = ''.join([c for c in text if c not in punctuation])
+    
+    # Optionally, remove stop words
+    if remove_stop_words:
+        text = text.split()
+        text = [w for w in text if not w in stop_words]
+        text = " ".join(text)
+    
+    # Optionally, shorten words to their stems
+    if stem_words:
+        text = text.split()
+        stemmer = SnowballStemmer('english')
+        stemmed_words = [stemmer.stem(word) for word in text]
+        text = " ".join(stemmed_words)
+    
+    # Return a list of words
+    return(text)
+
+
+def process_questions(question_dict, questions, question_list_name, dataframe):
+    '''transform questions and display progress'''
+    i = 0
+    try: # See if key in dict exists
+        if type(question_dict[i]) == list:
+            for question in questions:
+                question_dict[i].append(text_to_wordlist(question))
+                i += 1
+                if len(question_dict) % 100000 == 0:
+                    progress = len(question_dict)/len(dataframe) * 100
+                    print("{} is {}% complete.".format(question_list_name, round(progress, 1)))
+                    
+    except KeyError: # Means dict is empty 
+        for question in questions:
+            question_dict[i] = [text_to_wordlist(question)]
+            i += 1
+            if len(question_dict) % 100000 == 0:
+                progress = len(question_dict)/len(dataframe) * 100
+                print("{} is {}% complete.".format(question_list_name, round(progress, 1)))
+
 
 def make_train_generator(train_data):
 	"""Returns a generator and its period."""
@@ -45,13 +148,11 @@ def make_train_generator(train_data):
 def generate_features():
 	sent = {}
 	for i in range(len(Train)):
-		if Train['question2'].iloc[i] != str:
-			sent[i] = (set(word_tokenize(Train['question1'].iloc[i])),
-						set(''))
-		else:
-			sent[i] = (set(word_tokenize(Train['question1'].iloc[i])),
-						set(word_tokenize(Train['question2'].iloc[i])))
+		sent[i] = (set(word_tokenize(Train['question1'].iloc[i])),
+					set(word_tokenize(Train['question2'].iloc[i])))'''
 
+	process_questions(sent, Train.question1, 'sent part 1', Train)
+	process_questions(sent, Train.question2, 'sent part 2', Train)'''
 	# Finding unique words
 	onecount = defaultdict(int)
 	for i in sent.keys():
@@ -78,7 +179,8 @@ def generate_features():
 	for i in bkeys:
 		if bothcount[i] < 10:
 			bothcount.pop(i)
-
+	# len(onecount) should be 16700
+	# len(bothcount) should be 12403
 
 	num_features = 2
 
@@ -89,11 +191,11 @@ def generate_features():
 		# 1 : A unique word is in both questions
 		l1 = set(word_tokenize(row['question1']))
 		l2 = str(row['question2'])
-		for i in l1:
+		for i, word in enumerate(l1):
 			if i in okeys and i not in l2:
-				features[0] = True
+				features[0] += 1
 			if i in bkeys and i in l2:
-				features[1] = True
+				features[1] += 1
 
 
 		return features
@@ -102,7 +204,7 @@ def generate_features():
 
 num_features, get_features = generate_features()
 def getModel():
-	ins = keras.layers.Input((6,))
+	ins = keras.layers.Input((num_features,))
 	x = ins
 	x = keras.layers.Dense(100)(x)
 	x = keras.layers.Activation('relu')(x)
@@ -119,17 +221,18 @@ def getModel():
 def main():
 	k = getModel()
 	split = len(Train) * 9 // 10
-	score = k.predict(x=Train.as_matrix())
-	print(score)
+	#score = k.predict(x=Train.as_matrix())
+	#print(score)
 	gen, gen_len = make_train_generator(Train[:split])
 	val_gen, val_len = make_train_generator(Train[split:])
 	k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=6,
 			validation_data=val_gen, validation_steps=val_len)
-	#score = k.predict(x=Train.as_matrix())
-	#print(score)
-	#k.evaluate()
 
 
 if __name__ == '__main__':
 	#with bprofile.BProfile("profile2.png"):
+	for i, q in enumerate(Train['question1']):
+		Train['question1'].iloc[i] = text_to_wordlist(q)
+	for i, q in enumerate(Train['quetsion2']):
+		Train['question2'].iloc[i] = text_to_wordlist(q)
 	main()
