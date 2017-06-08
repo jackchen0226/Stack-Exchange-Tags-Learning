@@ -101,20 +101,17 @@ def text_to_wordlist(text, remove_stop_words=True, stem_words=False):
 
 def process_questions(question_dict, questions, question_list_name, dataframe):
     '''transform questions and display progress'''
-    i = 0
     try: # See if key in dict exists
-        if type(question_dict[i]) == list:
-            for question in questions:
-                question_dict[i].append(text_to_wordlist(question))
-                i += 1
-                if len(question_dict) % 100000 == 0:
-                    progress = len(question_dict)/len(dataframe) * 100
-                    print("{} is {}% complete.".format(question_list_name, round(progress, 1)))
-                    
+            for i, question in enumerate(questions):
+            	if type(question_dict[i]) == list:
+	                question_dict[i].append(text_to_wordlist(question))
+	                if len(question_dict) % 100000 == 0:
+	                    progress = len(question_dict)/len(dataframe) * 100
+	                    print("{} is {}% complete.".format(question_list_name, round(progress, 1)))
+	                    
     except KeyError: # Means dict is empty 
-        for question in questions:
+        for i, question in enumerate(questions):
             question_dict[i] = [text_to_wordlist(question)]
-            i += 1
             if len(question_dict) % 100000 == 0:
                 progress = len(question_dict)/len(dataframe) * 100
                 print("{} is {}% complete.".format(question_list_name, round(progress, 1)))
@@ -149,10 +146,10 @@ def generate_features():
 	sent = {}
 	for i in range(len(Train)):
 		sent[i] = (set(word_tokenize(Train['question1'].iloc[i])),
-					set(word_tokenize(Train['question2'].iloc[i])))'''
+					set(word_tokenize(Train['question2'].iloc[i])))
 
-	process_questions(sent, Train.question1, 'sent part 1', Train)
-	process_questions(sent, Train.question2, 'sent part 2', Train)'''
+	#process_questions(sent, Train.question1, 'Sentences part 1', Train)
+	#process_questions(sent, Train.question2, 'Sentences part 2', Train)
 	# Finding unique words
 	onecount = defaultdict(int)
 	for i in sent.keys():
@@ -179,25 +176,25 @@ def generate_features():
 	for i in bkeys:
 		if bothcount[i] < 10:
 			bothcount.pop(i)
+
 	# len(onecount) should be 16700
 	# len(bothcount) should be 12403
 
-	num_features = 2
+	okeys = list(onecount.keys())
+	bkeys = list(bothcount.keys())
+	num_features = len(onecount) + len(bothcount)
 
 	def get_features(row):
-		features = np.zeros(num_features)
-		# Rewrite, just need features for occurance in word, not this complex!!!
-		# 0 : A unique word is in one question but not the other
-		# 1 : A unique word is in both questions
-		l1 = set(word_tokenize(row['question1']))
-		l2 = str(row['question2'])
+		features = np.zeros(num_features) - 1
+		# 0-16700 : A unique word is in one question but not the other
+		# 16701-29103 : A unique word that appears in both sentences
+		l1 = set(word_tokenize(text_to_wordlist(row['question1'])))
+		l2 = set(text_to_wordlist(row['question2']))
 		for i, word in enumerate(l1):
 			if i in okeys and i not in l2:
-				features[0] += 1
+				features[okeys.index(word)] = 1
 			if i in bkeys and i in l2:
-				features[1] += 1
-
-
+				features[bkeys.index(word) + 16701] = 1
 		return features
 	return num_features, get_features
 
@@ -225,14 +222,10 @@ def main():
 	#print(score)
 	gen, gen_len = make_train_generator(Train[:split])
 	val_gen, val_len = make_train_generator(Train[split:])
-	k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=6,
+	k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=1,
 			validation_data=val_gen, validation_steps=val_len)
 
 
 if __name__ == '__main__':
 	#with bprofile.BProfile("profile2.png"):
-	for i, q in enumerate(Train['question1']):
-		Train['question1'].iloc[i] = text_to_wordlist(q)
-	for i, q in enumerate(Train['quetsion2']):
-		Train['question2'].iloc[i] = text_to_wordlist(q)
 	main()
