@@ -135,6 +135,7 @@ def make_train_generator(train_data):
 				for qidx in range(n):
 					train_row = train_data.iloc[i + qidx]
 					data[qidx, :] = get_features(train_row)
+					# If doing Test, this needs to be tweaked
 					target[qidx, 0] = train_row['is_duplicate'] == 0
 					target[qidx, 1] = train_row['is_duplicate'] == 1
 				yield data, target
@@ -181,8 +182,8 @@ def generate_features():
 
 	print(len(onecount))
 	print(len(bothcount))
-	# len(onecount) should be 16700
-	# len(bothcount) should be 12403
+	# len(onecount) should be 18973
+	# len(bothcount) should be 8389
 
 	okeys = list(onecount.keys())
 	bkeys = list(bothcount.keys())
@@ -190,8 +191,8 @@ def generate_features():
 
 	def get_features(row):
 		features = np.zeros(num_features)
-		# 0-16700 : A unique word is in one question but not the other
-		# 16701-29103 : A unique word that appears in both sentences
+		# 0-18972 : A unique word is in one question but not the other
+		# 18973-27362 : A unique word that appears in both sentences
 		l1 = set(word_tokenize(text_to_wordlist(row['question1'])))
 		l2 = set(word_tokenize(text_to_wordlist(row['question2'])))
 		for word in l1:
