@@ -214,8 +214,10 @@ def getModel():
 	x = ins
 	x = keras.layers.Dense(100)(x)
 	x = keras.layers.Activation('relu')(x)
+	#x = keras.layers.Dropout(0.25)(x)
 	x = keras.layers.Dense(2)(x)
 	x = keras.layers.Activation('softmax')(x)
+	x = keras.layers.Dropout(0.25)(x)
 
 	model = keras.models.Model(ins, x)
 	model.compile(loss='categorical_crossentropy', 
