@@ -1,5 +1,6 @@
 import keras
 import keras.backend as K
+from keras.preprocessing.text import text_to_word_sequence
 import pandas as pd
 import numpy as np
 from nltk import word_tokenize
@@ -15,7 +16,7 @@ from string import punctuation
 Train = pd.read_csv("QuoraData/train.csv")
 Train = Train.fillna('')
 stop_words = stopwords.words('english')
-#Train = Train[:9600]
+Train = Train[:9600]
 
 
 # Currie32's text cleaning
@@ -80,7 +81,7 @@ def text_to_wordlist(text, remove_stop_words=True, stem_words=False):
     text = re.sub(r" J K ", " JK ", text)
     
     # Remove punctuation from text
-    text = ''.join([c for c in text if c not in punctuation])
+    # text = ''.join([c for c in text if c not in punctuation])
     
     # Optionally, remove stop words
     if remove_stop_words:
@@ -96,7 +97,7 @@ def text_to_wordlist(text, remove_stop_words=True, stem_words=False):
         text = " ".join(stemmed_words)
     
     # Return a list of words
-    return(text)
+    return(text_to_word_sequence(text))
 
 
 def process_questions(question_dict, questions, question_list_name, dataframe):
@@ -104,14 +105,14 @@ def process_questions(question_dict, questions, question_list_name, dataframe):
     try: # See if key in dict exists
             for i, question in enumerate(questions):
             	if type(question_dict[i]) == list:
-	                question_dict[i].append(word_tokenize(text_to_wordlist(question)))
+	                question_dict[i].append(text_to_wordlist(question))
 	                if len(question_dict) % 100000 == 0:
 	                    progress = len(question_dict)/len(dataframe) * 100
 	                    print("{} is {}% complete.".format(question_list_name, round(progress, 1)))
 	                    
     except KeyError: # Means dict is empty 
         for i, question in enumerate(questions):
-            question_dict[i] = [word_tokenize(text_to_wordlist(question))]
+            question_dict[i] = [text_to_wordlist(question)]
             if len(question_dict) % 100000 == 0:
                 progress = len(question_dict)/len(dataframe) * 100
                 print("{} is {}% complete.".format(question_list_name, round(progress, 1)))
@@ -188,15 +189,15 @@ def generate_features():
 	okeys = list(onecount.keys())
 	bkeys = list(bothcount.keys())
 	num_features = len(onecount) + len(bothcount)
+	print(num_features)
 
 	def get_features(row):
 		features = np.zeros(num_features)
 		# 0-18972 : A unique word is in one question but not the other
 		# 18973-27362 : A unique word that appears in both sentences
-		l1 = set(word_tokenize(text_to_wordlist(row['question1'])))
-		l2 = set(word_tokenize(text_to_wordlist(row['question2'])))
+		l1 = set(text_to_wordlist(row['question1']))
+		l2 = set(text_to_wordlist(row['question2']))
 		for word in l1:
-			# TODO: check if word in l2 and not in l1
 			if word in okeys and word not in l2:
 				features[okeys.index(word)] = True
 			if word in bkeys and word in l2:
@@ -212,14 +213,16 @@ num_features, get_features = generate_features()
 def getModel():
 	ins = keras.layers.Input((num_features,))
 	x = ins
-	x = keras.layers.Dense(100)(x)
+	x = keras.layers.Dense(50)(x)
+	x = keras.layers.Dropout(0.1)(x)
 	x = keras.layers.Activation('relu')(x)
-	#x = keras.layers.Dropout(0.25)(x)
+	#x = keras.layers.Dropout(0.1)(x)
 	x = keras.layers.Dense(2)(x)
 	x = keras.layers.Activation('softmax')(x)
-	x = keras.layers.Dropout(0.25)(x)
+	#x = keras.layers.Dropout(0.1)(x)
 
 	model = keras.models.Model(ins, x)
+	model.summary()
 	model.compile(loss='categorical_crossentropy', 
 			optimizer=keras.optimizers.SGD(lr=0.1, momentum=0.5),
 			metrics=['accuracy'])
@@ -233,8 +236,11 @@ def main():
 	#print(score)
 	gen, gen_len = make_train_generator(Train[:split])
 	val_gen, val_len = make_train_generator(Train[split:])
-	k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=3,
+	k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=4,
 			validation_data=val_gen, validation_steps=val_len)
+
+	score = k.predict(x=Train.as_matrix())
+	print(score)
 
 
 if __name__ == '__main__':
