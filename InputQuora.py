@@ -239,7 +239,7 @@ def main():
 	k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=4,
 			validation_data=val_gen, validation_steps=val_len)
 
-	score = k.predict(x=Train.as_matrix())
+	score = k.predict_generator(generator=gen, steps=gen_len)
 	print(score)
 
 
