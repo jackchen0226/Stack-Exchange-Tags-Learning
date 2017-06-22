@@ -16,7 +16,7 @@ from string import punctuation
 Train = pd.read_csv("QuoraData/train.csv")
 Train = Train.fillna('')
 stop_words = stopwords.words('english')
-Train = Train[:9600]
+#Train = Train[:9600]
 
 
 # Currie32's text cleaning
@@ -192,7 +192,7 @@ def generate_features():
 	print(num_features)
 
 	def get_features(row):
-		features = np.zeros(num_features)
+		features = np.zeros(num_features) - 1
 		# 0-18972 : A unique word is in one question but not the other
 		# 18973-27362 : A unique word that appears in both sentences
 		l1 = set(text_to_wordlist(row['question1']))
@@ -236,11 +236,22 @@ def main():
 	#print(score)
 	gen, gen_len = make_train_generator(Train[:split])
 	val_gen, val_len = make_train_generator(Train[split:])
-	k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=4,
+	k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=3,
 			validation_data=val_gen, validation_steps=val_len)
 
 	score = k.predict_generator(generator=gen, steps=gen_len)
 	print(score)
+	'''
+	diff_qids = []
+	for i in range(len(score)):
+		if score[i][0] < 0.55 and score[i][0] > 0.45:
+			diff_qids.append(i)
+		elif score[i][1] < 0.55 and score[i][1] > 0.45:
+			diff_qids.append(i)
+	'''
+	qidspkl = open('pickled/score.pkl', 'wb')
+	pickle.dump(scor, qidspkl, protocol=pickle.HIGHEST_PROTOCOL)
+	qidspkl.close()
 
 
 if __name__ == '__main__':
