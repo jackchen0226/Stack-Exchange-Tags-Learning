@@ -250,7 +250,7 @@ def main():
 			diff_qids.append(i)
 	'''
 	qidspkl = open('pickled/score.pkl', 'wb')
-	pickle.dump(scor, qidspkl, protocol=pickle.HIGHEST_PROTOCOL)
+	pickle.dump(score, qidspkl, protocol=pickle.HIGHEST_PROTOCOL)
 	qidspkl.close()
 
 
