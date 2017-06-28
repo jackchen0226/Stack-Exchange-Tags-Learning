@@ -188,23 +188,57 @@ def generate_features():
 
 	okeys = list(onecount.keys())
 	bkeys = list(bothcount.keys())
-	num_features = len(onecount) + len(bothcount)
+	extra_features = 1 # The number of features outside of unique words within sentences
+	num_features = len(onecount) + len(bothcount) + extra_features
+	
 	print(num_features)
 
 	def get_features(row):
-		features = np.zeros(num_features) - 1
-		# 0-18972 : A unique word is in one question but not the other
+		features = np.zeros(num_features)
+		# 0 : The fraction of words that are shared between the two sentences after text processing
+		# 1-18972 : A unique word is in one question but not the other
 		# 18973-27362 : A unique word that appears in both sentences
 		l1 = set(text_to_wordlist(row['question1']))
 		l2 = set(text_to_wordlist(row['question2']))
+		if l1 == l2:
+			features[0] = True
+		
+		intersect = float(len(l1.intersection(l2)))
+		union = float(len(l1.union(l2)))
+		
+		try:
+			features[0] = intersect / union
+		except ZeroDivisionError:
+			if intersect == union:
+				features[0] = 1.0
+			else:
+				features[0] = 0.0
+		'''
+		l1_matching_words = 0.0
+		l2_matching_words = 0.0
+		for word in l1:
+			if word in l1.intersection(l2):
+				l1_matching_words += 1.0
+		for word in l2:
+			if word in l1.intersection(l2):
+				l2_matching_words += 1.0
+		try:
+			features[0] = (l1_matching_words / len(l1)) * (l2_matching_words / len(l2))
+		except ZeroDivisionError:
+			if len(l1) == len(l2):
+				features[0] = 1.0
+			else:
+				features[0] = 0.0
+		'''
 		for word in l1:
 			if word in okeys and word not in l2:
-				features[okeys.index(word)] = True
+				features[okeys.index(word) + extra_features] = True
 			if word in bkeys and word in l2:
-				features[bkeys.index(word) + len(onecount)] = True
+				features[bkeys.index(word) + len(onecount) + extra_features] = True
 		for word in l2:
 			if word in okeys and word not in l1:
-				features[okeys.index(word)] = True
+				features[okeys.index(word) + extra_features] = True
+		
 		return features
 	return num_features, get_features
 
@@ -216,10 +250,8 @@ def getModel():
 	x = keras.layers.Dense(50)(x)
 	x = keras.layers.Dropout(0.1)(x)
 	x = keras.layers.Activation('relu')(x)
-	#x = keras.layers.Dropout(0.1)(x)
 	x = keras.layers.Dense(2)(x)
 	x = keras.layers.Activation('softmax')(x)
-	#x = keras.layers.Dropout(0.1)(x)
 
 	model = keras.models.Model(ins, x)
 	model.summary()
@@ -241,6 +273,7 @@ def main():
 
 	score = k.predict_generator(generator=gen, steps=gen_len)
 	print(score)
+	print(len(score))
 	'''
 	diff_qids = []
 	for i in range(len(score)):
@@ -248,10 +281,11 @@ def main():
 			diff_qids.append(i)
 		elif score[i][1] < 0.55 and score[i][1] > 0.45:
 			diff_qids.append(i)
-	'''
+	
 	qidspkl = open('pickled/score.pkl', 'wb')
 	pickle.dump(score, qidspkl, protocol=pickle.HIGHEST_PROTOCOL)
 	qidspkl.close()
+	'''
 
 
 if __name__ == '__main__':
