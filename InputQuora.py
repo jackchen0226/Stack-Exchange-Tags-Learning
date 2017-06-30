@@ -5,7 +5,8 @@ import pandas as pd
 import numpy as np
 from nltk import word_tokenize
 from nltk.corpus import stopwords
-from nltk.stem import SnowballStemmer
+#from nltk.stem import SnowballStemmer
+from nltk.stem.wordnet import WordNetLemmatizer
 import pickle
 #import bprofile
 from collections import defaultdict
@@ -20,7 +21,7 @@ stop_words = stopwords.words('english')
 
 
 # Currie32's text cleaning
-def text_to_wordlist(text, remove_stop_words=True, stem_words=False):
+def text_to_wordlist(text, remove_stop_words=True, lemmatize_words=True):
     # Clean the text, with the option to remove stop_words and to stem words.
 
     # Clean the text
@@ -90,11 +91,11 @@ def text_to_wordlist(text, remove_stop_words=True, stem_words=False):
         text = " ".join(text)
     
     # Optionally, shorten words to their stems
-    if stem_words:
+    if lemmatize_words:
         text = text.split()
-        stemmer = SnowballStemmer('english')
-        stemmed_words = [stemmer.stem(word) for word in text]
-        text = " ".join(stemmed_words)
+        lemmatizer = WordNetLemmatizer()
+        lemmatized_words = [lemmatizer.lemmatize(word) for word in text]
+        text = " ".join(lemmatized_words)
     
     # Return a list of words
     return(text_to_word_sequence(text))
@@ -154,7 +155,7 @@ def generate_features():
 	process_questions(sent, Train.question1, 'Sentences part 1', Train)
 	process_questions(sent, Train.question2, 'Sentences part 2', Train)
 
-	# Finding unique words
+	# Finding unique words that **only** appear in one sentence
 	onecount = defaultdict(int)
 	for i in sent.keys():
 		for j in sent[i][0]:
@@ -164,6 +165,7 @@ def generate_features():
 		for j in sent[i][1]:
 			if j not in sent[i][0]:
 				onecount[j] += 1
+	# And unique words that appear in both sentences
 	bothcount = defaultdict(int)
 	for i in sent.keys():
 		for j in sent[i][0]:
@@ -183,8 +185,6 @@ def generate_features():
 
 	print(len(onecount))
 	print(len(bothcount))
-	# len(onecount) should be 18973
-	# len(bothcount) should be 8389
 
 	okeys = list(onecount.keys())
 	bkeys = list(bothcount.keys())
@@ -200,36 +200,21 @@ def generate_features():
 		# 18973-27362 : A unique word that appears in both sentences
 		l1 = set(text_to_wordlist(row['question1']))
 		l2 = set(text_to_wordlist(row['question2']))
+
 		if l1 == l2:
 			features[0] = True
-		
-		intersect = float(len(l1.intersection(l2)))
-		union = float(len(l1.union(l2)))
-		
+
+		intersection - float(len(l1.intersection(l2)))
+                union = float(len(l1.union(l2)))
+
 		try:
-			features[0] = intersect / union
-		except ZeroDivisionError:
+			features[0] = intersection / union
+		except ZeroDivisionError: # For empty sets
 			if intersect == union:
 				features[0] = 1.0
 			else:
 				features[0] = 0.0
-		'''
-		l1_matching_words = 0.0
-		l2_matching_words = 0.0
-		for word in l1:
-			if word in l1.intersection(l2):
-				l1_matching_words += 1.0
-		for word in l2:
-			if word in l1.intersection(l2):
-				l2_matching_words += 1.0
-		try:
-			features[0] = (l1_matching_words / len(l1)) * (l2_matching_words / len(l2))
-		except ZeroDivisionError:
-			if len(l1) == len(l2):
-				features[0] = 1.0
-			else:
-				features[0] = 0.0
-		'''
+		
 		for word in l1:
 			if word in okeys and word not in l2:
 				features[okeys.index(word) + extra_features] = True
@@ -247,6 +232,7 @@ num_features, get_features = generate_features()
 def getModel():
 	ins = keras.layers.Input((num_features,))
 	x = ins
+	# increase Dense?
 	x = keras.layers.Dense(50)(x)
 	x = keras.layers.Dropout(0.1)(x)
 	x = keras.layers.Activation('relu')(x)
@@ -255,6 +241,7 @@ def getModel():
 
 	model = keras.models.Model(ins, x)
 	model.summary()
+	# TODO thoroughly test RMSprop again
 	model.compile(loss='categorical_crossentropy', 
 			optimizer=keras.optimizers.SGD(lr=0.1, momentum=0.5),
 			metrics=['accuracy'])
@@ -264,8 +251,6 @@ def getModel():
 def main():
 	k = getModel()
 	split = len(Train) * 9 // 10
-	#score = k.predict(x=Train.as_matrix())
-	#print(score)
 	gen, gen_len = make_train_generator(Train[:split])
 	val_gen, val_len = make_train_generator(Train[split:])
 	k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=3,
@@ -274,19 +259,11 @@ def main():
 	score = k.predict_generator(generator=gen, steps=gen_len)
 	print(score)
 	print(len(score))
-	'''
-	diff_qids = []
-	for i in range(len(score)):
-		if score[i][0] < 0.55 and score[i][0] > 0.45:
-			diff_qids.append(i)
-		elif score[i][1] < 0.55 and score[i][1] > 0.45:
-			diff_qids.append(i)
-	
+
 	qidspkl = open('pickled/score.pkl', 'wb')
 	pickle.dump(score, qidspkl, protocol=pickle.HIGHEST_PROTOCOL)
 	qidspkl.close()
-	'''
-
+	
 
 if __name__ == '__main__':
 	#with bprofile.BProfile("profile2.png"):
