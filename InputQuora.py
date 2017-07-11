@@ -12,6 +12,8 @@ import pickle
 from collections import defaultdict
 import re
 from string import punctuation
+from multiprocessing import Pool
+from math import ceil
 
 
 Train = pd.read_csv("QuoraData/train.csv")
@@ -125,9 +127,12 @@ def make_train_generator(train_data):
 	train_len = len(train_data)
 	period = int(np.ceil(train_len / batch_size))
 
+	num_batches = ceil(train_len / 128)
+
 	def generator():
 		#profiler = bprofile.BProfile('genpin.png')
 		while True:
+			'''
 			i = 0
 			while i < train_len:
 				#with profiler:
@@ -142,19 +147,35 @@ def make_train_generator(train_data):
 					target[qidx, 1] = train_row['is_duplicate'] == 1
 				yield data, target
 				i += n
+			'''
+
+			for i_batch in np.array_split(train_data.as_matrix(), num_batches):
+				print(type(i_batch))
+				b_len = len(i_batch)
+				target = np.zeros((b_len, 2))
+				data = list(map(get_features, i_batch))
+				print(data)
+				# tuple index out of range
+				data = np.asarray(data)
+
+				#data = np.array_split(data, 4)
+
+				yield data, target
+			
+
 	return generator(), period
 
 
 def generate_features():
 	sent = {}
-	'''
+	
 	for i in range(len(Train)):
 		sent[i] = (set(word_tokenize(Train['question1'].iloc[i])),
 					set(word_tokenize(Train['question2'].iloc[i])))
 	'''
 	process_questions(sent, Train.question1, 'Sentences part 1', Train)
 	process_questions(sent, Train.question2, 'Sentences part 2', Train)
-
+	'''
 	# Finding unique words that **only** appear in one sentence
 	onecount = defaultdict(int)
 	for i in sent.keys():
@@ -188,7 +209,7 @@ def generate_features():
 
 	okeys = list(onecount.keys())
 	bkeys = list(bothcount.keys())
-	extra_features = 1 # The number of features outside of unique words within sentences
+	extra_features = 2 # The number of features outside of unique words within sentences
 	num_features = len(onecount) + len(bothcount) + extra_features
 	
 	print(num_features)
@@ -198,23 +219,28 @@ def generate_features():
 		# 0 : The fraction of words that are shared between the two sentences after text processing
 		# 1-18972 : A unique word is in one question but not the other
 		# 18973-27362 : A unique word that appears in both sentences
-		l1 = set(text_to_wordlist(row['question1']))
-		l2 = set(text_to_wordlist(row['question2']))
+		l1 = set(text_to_wordlist(row[3]))
+		l2 = set(text_to_wordlist(row[4]))
 
 		if l1 == l2:
 			features[0] = True
 
-		intersection - float(len(l1.intersection(l2)))
-                union = float(len(l1.union(l2)))
+		intersect = float(len(l1.intersection(l2)))
+		union = float(len(l1.union(l2)))
 
 		try:
-			features[0] = intersection / union
+			features[0] = intersect / union
 		except ZeroDivisionError: # For empty sets
 			if intersect == union:
 				features[0] = 1.0
 			else:
 				features[0] = 0.0
-		
+		'''		
+		l1_nsw = set(text_to_word_sequence(row['question1']))
+		l2_nsw = set(text_to_word_sequence(row['question2']))
+
+		features[1] = float(len(l1_nsw.intersection(l2_nsw))) / float(len(l1_nsw.union(l2_nsw)))
+		'''
 		for word in l1:
 			if word in okeys and word not in l2:
 				features[okeys.index(word) + extra_features] = True
@@ -233,6 +259,9 @@ def getModel():
 	ins = keras.layers.Input((num_features,))
 	x = ins
 	# increase Dense?
+	x = keras.layers.Dense(50)(x)
+	x = keras.layers.Dropout(0.1)(x)
+	x = keras.layers.Activation('relu')(x)
 	x = keras.layers.Dense(50)(x)
 	x = keras.layers.Dropout(0.1)(x)
 	x = keras.layers.Activation('relu')(x)
