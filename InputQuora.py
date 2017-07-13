@@ -205,7 +205,7 @@ def generate_features():
 			features[0] = True
 
 		intersection - float(len(l1.intersection(l2)))
-                union = float(len(l1.union(l2)))
+		union = float(len(l1.union(l2)))
 
 		try:
 			features[0] = intersection / union
@@ -233,6 +233,9 @@ def getModel():
 	ins = keras.layers.Input((num_features,))
 	x = ins
 	# increase Dense?
+	x = keras.layers.Dense(50)(x)
+	x = keras.layers.Dropout(0.1)(x)
+	x = keras.layers.Activation('relu')(x)
 	x = keras.layers.Dense(50)(x)
 	x = keras.layers.Dropout(0.1)(x)
 	x = keras.layers.Activation('relu')(x)
