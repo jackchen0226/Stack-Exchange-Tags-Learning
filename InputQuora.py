@@ -204,7 +204,7 @@ def generate_features():
 		if l1 == l2:
 			features[0] = True
 
-		intersection - float(len(l1.intersection(l2)))
+		intersection = float(len(l1.intersection(l2)))
 		union = float(len(l1.union(l2)))
 
 		try:
