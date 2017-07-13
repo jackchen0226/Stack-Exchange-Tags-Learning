@@ -150,21 +150,30 @@ def make_train_generator(train_data):
 			'''
 
 			for i_batch in np.array_split(train_data.as_matrix(), num_batches):
-				print(type(i_batch))
+				p = Pool(4)
 				b_len = len(i_batch)
-				target = np.zeros((b_len, 2))
-				data = list(map(get_features, i_batch))
-				print(data)
-				# tuple index out of range
+				target_arr = np.zeros((b_len, 2))
+				data = list(p.map(get_features, i_batch)) # Should be 128 arrays
+				target = list(p.map(target_map, i_batch))
+
 				data = np.asarray(data)
+				target = np.asarray(target)
 
-				#data = np.array_split(data, 4)
+				data_split = np.array_split(data, 4)
+				target_split = np.array_split(target, 4)
 
-				yield data, target
-			
+				for i in range(4):
+					yield data_split[i], target_split[i]
 
 	return generator(), period
 
+
+def target_map(row):
+	target_arr = np.zeros(2)
+	# 5th row contains "is_duplicate"
+	target_arr[0] = row[5] == 0
+	target_arr[1] = row[5] == 1
+	return target_arr
 
 def generate_features():
 	sent = {}
@@ -221,7 +230,7 @@ def generate_features():
 		# 18973-27362 : A unique word that appears in both sentences
 		l1 = set(text_to_wordlist(row[3]))
 		l2 = set(text_to_wordlist(row[4]))
-
+		# Rows 3 and 4 contain 'question1' and 'question2' respectively
 		if l1 == l2:
 			features[0] = True
 
