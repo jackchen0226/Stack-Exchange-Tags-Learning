@@ -204,11 +204,11 @@ def generate_features():
 		if l1 == l2:
 			features[0] = True
 
-		intersection = float(len(l1.intersection(l2)))
+		intersect = float(len(l1.intersection(l2)))
 		union = float(len(l1.union(l2)))
 
 		try:
-			features[0] = intersection / union
+			features[0] = intersect / union
 		except ZeroDivisionError: # For empty sets
 			if intersect == union:
 				features[0] = 1.0
