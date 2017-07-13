@@ -106,13 +106,13 @@ def text_to_wordlist(text, remove_stop_words=True, lemmatize_words=True):
 def process_questions(question_dict, questions, question_list_name, dataframe):
     '''transform questions and display progress'''
     try: # See if key in dict exists
-            for i, question in enumerate(questions):
-            	if type(question_dict[i]) == list:
-	                question_dict[i].append(text_to_wordlist(question))
-	                if len(question_dict) % 100000 == 0:
-	                    progress = len(question_dict)/len(dataframe) * 100
-	                    print("{} is {}% complete.".format(question_list_name, round(progress, 1)))
-	                    
+        for i, question in enumerate(questions):
+            if type(question_dict[i]) == list:
+                question_dict[i].append(text_to_wordlist(question))
+                if len(question_dict) % 100000 == 0:
+                    progress = len(question_dict)/len(dataframe) * 100
+                    print("{} is {}% complete.".format(question_list_name, round(progress, 1)))
+
     except KeyError: # Means dict is empty 
         for i, question in enumerate(questions):
             question_dict[i] = [text_to_wordlist(question)]
@@ -127,7 +127,8 @@ def make_train_generator(train_data):
 	train_len = len(train_data)
 	period = int(np.ceil(train_len / batch_size))
 
-	num_batches = ceil(train_len / 128)
+	map_batch = 128
+	num_batches = ceil(train_len / map_batch)
 
 	def generator():
 		#profiler = bprofile.BProfile('genpin.png')
@@ -150,19 +151,17 @@ def make_train_generator(train_data):
 			'''
 
 			for i_batch in np.array_split(train_data.as_matrix(), num_batches):
-				p = Pool(4)
 				b_len = len(i_batch)
-				target_arr = np.zeros((b_len, 2))
-				data = list(p.map(get_features, i_batch)) # Should be 128 arrays
-				target = list(p.map(target_map, i_batch))
+				data = list(_global_pool.map(global_get, i_batch)) # Should be 128 arrays
+				target = list(map(target_map, i_batch))
 
 				data = np.asarray(data)
 				target = np.asarray(target)
 
-				data_split = np.array_split(data, 4)
-				target_split = np.array_split(target, 4)
+				data_split = np.array_split(data, map_batch // batch_size)
+				target_split = np.array_split(target, map_batch // batch_size)
 
-				for i in range(4):
+				for i in range(len(data_split)):
 					yield data_split[i], target_split[i]
 
 	return generator(), period
@@ -177,14 +176,14 @@ def target_map(row):
 
 def generate_features():
 	sent = {}
-	
+	'''
 	for i in range(len(Train)):
 		sent[i] = (set(word_tokenize(Train['question1'].iloc[i])),
 					set(word_tokenize(Train['question2'].iloc[i])))
 	'''
 	process_questions(sent, Train.question1, 'Sentences part 1', Train)
 	process_questions(sent, Train.question2, 'Sentences part 2', Train)
-	'''
+	
 	# Finding unique words that **only** appear in one sentence
 	onecount = defaultdict(int)
 	for i in sent.keys():
@@ -223,6 +222,9 @@ def generate_features():
 	
 	print(num_features)
 
+	okeys_to_index = {v: i for i, v in enumerate(okeys)}
+	bkeys_to_index = {v: i for i, v in enumerate(bkeys)}
+
 	def get_features(row):
 		features = np.zeros(num_features)
 		# 0 : The fraction of words that are shared between the two sentences after text processing
@@ -252,18 +254,22 @@ def generate_features():
 		'''
 		for word in l1:
 			if word in okeys and word not in l2:
-				features[okeys.index(word) + extra_features] = True
+				features[okeys_to_index[word] + extra_features] = True
 			if word in bkeys and word in l2:
-				features[bkeys.index(word) + len(onecount) + extra_features] = True
+				features[bkeys_to_index[word] + len(onecount) + extra_features] = True
 		for word in l2:
 			if word in okeys and word not in l1:
-				features[okeys.index(word) + extra_features] = True
+				features[okeys_to_index[word] + extra_features] = True
 		
 		return features
 	return num_features, get_features
 
 
 num_features, get_features = generate_features()
+def global_get(*args, **kwargs):
+	return get_features(*args, **kwargs)
+_global_pool = Pool()
+
 def getModel():
 	ins = keras.layers.Input((num_features,))
 	x = ins
