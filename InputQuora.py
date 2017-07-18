@@ -19,8 +19,14 @@ from math import ceil
 Train = pd.read_csv("QuoraData/train.csv")
 Train = Train.fillna('')
 stop_words = stopwords.words('english')
-#Train = Train[:9600]
+Train = Train[:9600]
+Test = pd.read_csv('QuoraData/test.csv')
+Test = Test.fillna('')
+Test = Test[:9600]
 
+training = True
+_q1_id = 0
+_q2_id = 0
 
 # Currie32's text cleaning
 def text_to_wordlist(text, remove_stop_words=True, lemmatize_words=True):
@@ -122,193 +128,346 @@ def process_questions(question_dict, questions, question_list_name, dataframe):
 
 
 def make_train_generator(train_data):
-	"""Returns a generator and its period."""
-	batch_size = 32
-	train_len = len(train_data)
-	period = int(np.ceil(train_len / batch_size))
+    """Returns a generator and its period."""
+    batch_size = 32
+    train_len = len(train_data)
+    period = int(np.ceil(train_len / batch_size))
 
-	map_batch = 128
-	num_batches = ceil(train_len / map_batch)
+    map_batch = 128
+    num_batches = ceil(train_len / map_batch)
 
-	def generator():
-		#profiler = bprofile.BProfile('genpin.png')
-		while True:
-			'''
-			i = 0
-			while i < train_len:
-				#with profiler:
-				n = min(batch_size, train_len - i)
-				data = np.zeros((n, num_features))
-				target = np.zeros((n, 2))
-				for qidx in range(n):
-					train_row = train_data.iloc[i + qidx]
-					data[qidx, :] = get_features(train_row)
-					# If doing Test, this needs to be tweaked
-					target[qidx, 0] = train_row['is_duplicate'] == 0
-					target[qidx, 1] = train_row['is_duplicate'] == 1
-				yield data, target
-				i += n
-			'''
+    #train_col = list(train_data.columns)
+    #_q1_id = train_col.index('question1')
+    #_q2_id = train_col.index('question2')
 
-			for i_batch in np.array_split(train_data.as_matrix(), num_batches):
-				b_len = len(i_batch)
-				data = list(_global_pool.map(global_get, i_batch)) # Should be 128 arrays
-				target = list(map(target_map, i_batch))
+    def generator():
+        #profiler = bprofile.BProfile('genpin.png')
+        while True:
+            '''
+            i = 0
+            while i < train_len:
+                #with profiler:
+                n = min(batch_size, train_len - i)
+                data = np.zeros((n, num_features))
+                target = np.zeros((n, 2))
+                for qidx in range(n):
+                    train_row = train_data.iloc[i + qidx]
+                    data[qidx, :] = get_features(train_row)
+                    # If doing Test, this needs to be tweaked
+                    target[qidx, 0] = train_row['is_duplicate'] == 0
+                    target[qidx, 1] = train_row['is_duplicate'] == 1
+                yield data, targe
+                i += n
+            '''
+            #with profiler:
+            for i_batch in np.array_split(train_data.as_matrix(), num_batches):
+                b_len = len(i_batch)
+                data = list(_global_pool.map(global_get, i_batch)) # Should be 128 arrays
+                target = list(map(target_map, i_batch))
 
-				data = np.asarray(data)
-				target = np.asarray(target)
+                data = np.asarray(data)
+                target = np.asarray(target)
 
-				data_split = np.array_split(data, map_batch // batch_size)
-				target_split = np.array_split(target, map_batch // batch_size)
+                data_split = np.array_split(data, map_batch // batch_size)
+                target_split = np.array_split(target, map_batch // batch_size)
 
-				for i in range(len(data_split)):
-					yield data_split[i], target_split[i]
+                for i in range(len(data_split)):
+                    yield data_split[i], target_split[i]
 
-	return generator(), period
+    return generator(), period
 
+
+def make_test_generator(test_data):
+    batch_size = 32
+    test_len = len(test_data)
+    period = int(np.ceil(test_len / batch_size))
+
+    map_batch = 128
+    num_batches = ceil(test_len / map_batch)
+
+    #test_col = list(test_data.columns)
+    #_q1_id = test_col.index('question1')
+    #_q2_id = test_col.index('question2')
+    def generator():
+        while True:
+            for i_batch in np.array_split(test_data.as_matrix(), num_batches):
+                b_len = len(i_batch)
+                data = list(_global_pool.map(global_test, i_batch)) # Should be 128 arrays
+                data = np.asarray(data)
+
+                data_split = np.array_split(data, map_batch // batch_size)
+
+                for i in range(len(data_split)):
+
+                    yield data_split[i]
+
+    return generator(), period
 
 def target_map(row):
-	target_arr = np.zeros(2)
-	# 5th row contains "is_duplicate"
-	target_arr[0] = row[5] == 0
-	target_arr[1] = row[5] == 1
-	return target_arr
+    target_arr = np.zeros(2)
+    # 5th row contains "is_duplicate"
+    target_arr[0] = row[5] == 0
+    target_arr[1] = row[5] == 1
+    return target_arr
 
 def generate_features():
-	sent = {}
-	'''
-	for i in range(len(Train)):
-		sent[i] = (set(word_tokenize(Train['question1'].iloc[i])),
-					set(word_tokenize(Train['question2'].iloc[i])))
-	'''
-	process_questions(sent, Train.question1, 'Sentences part 1', Train)
-	process_questions(sent, Train.question2, 'Sentences part 2', Train)
-	
-	# Finding unique words that **only** appear in one sentence
-	onecount = defaultdict(int)
-	for i in sent.keys():
-		for j in sent[i][0]:
-			if j not in sent[i][1]:
-				onecount[j] += 1
-				
-		for j in sent[i][1]:
-			if j not in sent[i][0]:
-				onecount[j] += 1
-	# And unique words that appear in both sentences
-	bothcount = defaultdict(int)
-	for i in sent.keys():
-		for j in sent[i][0]:
-			if j in sent[i][1]:
-				bothcount[j] += 1
+    '''if training:
+        dataset = Train
+    else:
+        dataset = Test
+    '''
+    dataset = Train
+    sent = {}
+    '''
+    for i in range(len(Train)):
+        sent[i] = (set(word_tokenize(Train['question1'].iloc[i])),
+                    set(word_tokenize(Train['question2'].iloc[i])))
+    '''
+    process_questions(sent, dataset.question1, 'Sentences part 1', dataset)
+    process_questions(sent, dataset.question2, 'Sentences part 2', dataset)
+    
+    # Finding unique words that **only** appear in one sentence
+    onecount = defaultdict(int)
+    for i in sent.keys():
+        for j in sent[i][0]:
+            if j not in sent[i][1]:
+                onecount[j] += 1
+        for j in sent[i][1]:
+            if j not in sent[i][0]:
+                onecount[j] += 1
+    # And unique words that appear in both sentences
+    bothcount = defaultdict(int)
+    for i in sent.keys():
+        for j in sent[i][0]:
+            if j in sent[i][1]:
+                bothcount[j] += 1
 
-	# Trimming words that appear less than 10 times
-	okeys = set(onecount.keys())
-	for i in okeys:
-		if onecount[i] < 10:
-			onecount.pop(i)
+    # Trimming words that appear less than 10 times
+    okeys = set(onecount.keys())
+    for i in okeys:
+        if onecount[i] < 10:
+            onecount.pop(i)
 
-	bkeys = set(bothcount.keys())
-	for i in bkeys:
-		if bothcount[i] < 10:
-			bothcount.pop(i)
+    bkeys = set(bothcount.keys())
+    for i in bkeys:
+        if bothcount[i] < 10:
+            bothcount.pop(i)
 
-	print(len(onecount))
-	print(len(bothcount))
+    print(len(onecount))
+    print(len(bothcount))
 
-	okeys = list(onecount.keys())
-	bkeys = list(bothcount.keys())
-	extra_features = 2 # The number of features outside of unique words within sentences
-	num_features = len(onecount) + len(bothcount) + extra_features
-	
-	print(num_features)
+    okeys = list(onecount.keys())
+    bkeys = list(bothcount.keys())
+    extra_features = 2 # The number of features outside of unique words within sentences
+    num_features = len(onecount) + len(bothcount) + extra_features
+    
+    print(num_features)
 
-	okeys_to_index = {v: i for i, v in enumerate(okeys)}
-	bkeys_to_index = {v: i for i, v in enumerate(bkeys)}
+    okeys_to_index = {v: i for i, v in enumerate(okeys)}
+    bkeys_to_index = {v: i for i, v in enumerate(bkeys)}
 
-	def get_features(row):
-		features = np.zeros(num_features)
-		# 0 : The fraction of words that are shared between the two sentences after text processing
-		# 1-18972 : A unique word is in one question but not the other
-		# 18973-27362 : A unique word that appears in both sentences
-		l1 = set(text_to_wordlist(row[3]))
-		l2 = set(text_to_wordlist(row[4]))
-		# Rows 3 and 4 contain 'question1' and 'question2' respectively
-		if l1 == l2:
-			features[0] = True
+    def get_features(row):
+        features = np.zeros(num_features)
+        # 0 : The fraction of words that are shared between the two sentences after text processing
+        # 1-18972 : A unique word is in one question but not the other
+        # 18973-27362 : A unique word that appears in both sentences
+        l1 = set(text_to_wordlist(row[3]))
+        l2 = set(text_to_wordlist(row[4]))
+        # q_id contains the ids for the respective questions which differ in Train and Test
+        if l1 == l2:
+            features[0] = True
 
-		intersect = float(len(l1.intersection(l2)))
-		union = float(len(l1.union(l2)))
+        intersect = float(len(l1.intersection(l2)))
+        union = float(len(l1.union(l2)))
 
-		try:
-			features[0] = intersect / union
-		except ZeroDivisionError: # For empty sets
-			if intersect == union:
-				features[0] = 1.0
-			else:
-				features[0] = 0.0
-		'''		
-		l1_nsw = set(text_to_word_sequence(row['question1']))
-		l2_nsw = set(text_to_word_sequence(row['question2']))
+        try:
+            features[0] = intersect / union
+        except ZeroDivisionError: # For empty sets
+            if intersect == union:
+                features[0] = 1.0
+            else:
+                features[0] = 0.0
+        '''        
+        l1_nsw = set(text_to_word_sequence(row['question1']))
+        l2_nsw = set(text_to_word_sequence(row['question2']))
 
-		features[1] = float(len(l1_nsw.intersection(l2_nsw))) / float(len(l1_nsw.union(l2_nsw)))
-		'''
-		for word in l1:
-			if word in okeys and word not in l2:
-				features[okeys_to_index[word] + extra_features] = True
-			if word in bkeys and word in l2:
-				features[bkeys_to_index[word] + len(onecount) + extra_features] = True
-		for word in l2:
-			if word in okeys and word not in l1:
-				features[okeys_to_index[word] + extra_features] = True
-		
-		return features
-	return num_features, get_features
+        features[1] = float(len(l1_nsw.intersection(l2_nsw))) / float(len(l1_nsw.union(l2_nsw)))
+        '''
+        for word in l1:
+            if word in okeys and word not in l2:
+                features[okeys_to_index[word] + extra_features] = True
+            if word in bkeys and word in l2:
+                features[bkeys_to_index[word] + len(onecount) + extra_features] = True
+        for word in l2:
+            if word in okeys and word not in l1:
+                features[okeys_to_index[word] + extra_features] = True
+        
+        return features
+    return num_features, get_features
+
+
+def test_features():
+    dataset = Test
+    sent = {}
+    '''
+    for i in range(len(Train)):
+        sent[i] = (set(word_tokenize(Train['question1'].iloc[i])),
+                    set(word_tokenize(Train['question2'].iloc[i])))
+    '''
+    process_questions(sent, dataset.question1, 'Sentences part 1', dataset)
+    process_questions(sent, dataset.question2, 'Sentences part 2', dataset)
+    
+    # Finding unique words that **only** appear in one sentence
+    onecount = defaultdict(int)
+    for i in sent.keys():
+        for j in sent[i][0]:
+            if j not in sent[i][1]:
+                onecount[j] += 1
+        for j in sent[i][1]:
+            if j not in sent[i][0]:
+                onecount[j] += 1
+    # And unique words that appear in both sentences
+    bothcount = defaultdict(int)
+    for i in sent.keys():
+        for j in sent[i][0]:
+            if j in sent[i][1]:
+                bothcount[j] += 1
+
+    # Trimming words that appear less than 10 times
+    okeys = set(onecount.keys())
+    for i in okeys:
+        if onecount[i] < 10:
+            onecount.pop(i)
+
+    bkeys = set(bothcount.keys())
+    for i in bkeys:
+        if bothcount[i] < 10:
+            bothcount.pop(i)
+
+    print(len(onecount))
+    print(len(bothcount))
+
+    okeys = list(onecount.keys())
+    bkeys = list(bothcount.keys())
+    extra_features = 2 # The number of features outside of unique words within sentences
+    num_features = len(onecount) + len(bothcount) + extra_features
+    
+    print(num_features)
+
+    okeys_to_index = {v: i for i, v in enumerate(okeys)}
+    bkeys_to_index = {v: i for i, v in enumerate(bkeys)}
+
+    def get_features(row):
+        features = np.zeros(num_features)
+        # 0 : The fraction of words that are shared between the two sentences after text processing
+        # 1-18972 : A unique word is in one question but not the other
+        # 18973-27362 : A unique word that appears in both sentences
+        l1 = set(text_to_wordlist(row[1]))
+        l2 = set(text_to_wordlist(row[2]))
+        # q_id contains the ids for the respective questions which differ in Train and Test
+        if l1 == l2:
+            features[0] = True
+
+        intersect = float(len(l1.intersection(l2)))
+        union = float(len(l1.union(l2)))
+
+        try:
+            features[0] = intersect / union
+        except ZeroDivisionError: # For empty sets
+            if intersect == union:
+                features[0] = 1.0
+            else:
+                features[0] = 0.0
+        '''        
+        l1_nsw = set(text_to_word_sequence(row['question1']))
+        l2_nsw = set(text_to_word_sequence(row['question2']))
+
+        features[1] = float(len(l1_nsw.intersection(l2_nsw))) / float(len(l1_nsw.union(l2_nsw)))
+        '''
+        for word in l1:
+            if word in okeys and word not in l2:
+                features[okeys_to_index[word] + extra_features] = True
+            if word in bkeys and word in l2:
+                features[bkeys_to_index[word] + len(onecount) + extra_features] = True
+        for word in l2:
+            if word in okeys and word not in l1:
+                features[okeys_to_index[word] + extra_features] = True
+        
+        return features
+    return num_features, get_features
 
 
 num_features, get_features = generate_features()
+training = False
+test_num_features, test_features = test_features()
 def global_get(*args, **kwargs):
-	return get_features(*args, **kwargs)
+    return get_features(*args, **kwargs)
+
+def global_test(*args, **kwargs):
+    return test_features(*args, **kwargs)
 _global_pool = Pool()
 
 def getModel():
-	ins = keras.layers.Input((num_features,))
-	x = ins
-	# increase Dense?
-	x = keras.layers.Dense(50)(x)
-	x = keras.layers.Dropout(0.1)(x)
-	x = keras.layers.Activation('relu')(x)
-	x = keras.layers.Dense(50)(x)
-	x = keras.layers.Dropout(0.1)(x)
-	x = keras.layers.Activation('relu')(x)
-	x = keras.layers.Dense(2)(x)
-	x = keras.layers.Activation('softmax')(x)
+    ins = keras.layers.Input((num_features,))
+    x = ins
+    # increase Dense?
+    x = keras.layers.Dense(50)(x)
+    x = keras.layers.Dropout(0.1)(x)
+    x = keras.layers.Activation('relu')(x)
+    x = keras.layers.Dense(50)(x)
+    x = keras.layers.Dropout(0.1)(x)
+    x = keras.layers.Activation('relu')(x)
+    x = keras.layers.Dense(2)(x)
+    x = keras.layers.Activation('softmax')(x)
 
-	model = keras.models.Model(ins, x)
-	model.summary()
-	# TODO thoroughly test RMSprop again
-	model.compile(loss='categorical_crossentropy', 
-			optimizer=keras.optimizers.SGD(lr=0.1, momentum=0.5),
-			metrics=['accuracy'])
-	return model
+    model = keras.models.Model(ins, x)
+    model.summary()
+    model.compile(loss='categorical_crossentropy', 
+            optimizer=keras.optimizers.SGD(lr=0.1, momentum=0.5),
+            metrics=['accuracy'])
+    return model
 
 
 def main():
-	k = getModel()
-	split = len(Train) * 9 // 10
-	gen, gen_len = make_train_generator(Train[:split])
-	val_gen, val_len = make_train_generator(Train[split:])
-	k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=3,
-			validation_data=val_gen, validation_steps=val_len)
+    k = getModel()
+    split = len(Train) * 9 // 10
+    gen, gen_len = make_train_generator(Train[:split])
+    val_gen, val_len = make_train_generator(Train[split:])
+    k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=3,
+            validation_data=val_gen, validation_steps=val_len)
+    ################# TESTING  ###################
+    training = False
+    test_gen, test_gen_len = make_test_generator(Test[:split])
+    #score = k.predict_generator(generator=gen, steps=gen_len)
+    #print(score)
+    #print(len(score))
 
-	score = k.predict_generator(generator=gen, steps=gen_len)
-	print(score)
-	print(len(score))
+    # score has both positives and negatives
+    score = k.predict_generator(generator=test_gen, steps=test_gen_len)
+    submit_len = 0
+    score_fract = 10
+    score_split = ceil(len(score) / score_fract)
+    for i in range(score_fract):
+        if i == 1:            
+            with open('submission.csv', 'w') as f:
+                f.write('test_id,_is_duplicate\n')
+                for i, row in enumerate(score[:score_split]):
+                    f.write("{},{}\n".format(i, row[0]))
+                    submit_len += 1
+            score = score[score_split:]
+        else:
+            with open('submission.csv', 'a') as f:
+                for i, row in enumerate(score[:score_split]):
+                    f.write("{},{}\n".format(submit_len + i, row[0],))
+                    submit_len += 1
+            score = score[score_split:]
 
-	qidspkl = open('pickled/score.pkl', 'wb')
-	pickle.dump(score, qidspkl, protocol=pickle.HIGHEST_PROTOCOL)
-	qidspkl.close()
-	
+
+    #qidspkl = open('pickled/score.pkl', 'wb')
+    #pickle.dump(score, qidspkl, protocol=pickle.HIGHEST_PROTOCOL)
+    #qidspkl.close()
+    
 
 if __name__ == '__main__':
-	#with bprofile.BProfile("profile2.png"):
-	main()
+    #with bprofile.BProfile("profile2.png"):
+    main()
