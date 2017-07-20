@@ -3,9 +3,7 @@ import keras.backend as K
 from keras.preprocessing.text import text_to_word_sequence
 import pandas as pd
 import numpy as np
-from nltk import word_tokenize
 from nltk.corpus import stopwords
-#from nltk.stem import SnowballStemmer
 from nltk.stem.wordnet import WordNetLemmatizer
 import pickle
 #import bprofile
@@ -14,19 +12,15 @@ import re
 from string import punctuation
 from multiprocessing import Pool
 from math import ceil
-
+import time
 
 Train = pd.read_csv("QuoraData/train.csv")
 Train = Train.fillna('')
-stop_words = stopwords.words('english')
-Train = Train[:9600]
+#Train = Train[:9603]
 Test = pd.read_csv('QuoraData/test.csv')
 Test = Test.fillna('')
-Test = Test[:9600]
-
-training = True
-_q1_id = 0
-_q2_id = 0
+#Test = Test[:9603]
+stop_words = stopwords.words('english')
 
 # Currie32's text cleaning
 def text_to_wordlist(text, remove_stop_words=True, lemmatize_words=True):
@@ -136,10 +130,6 @@ def make_train_generator(train_data):
     map_batch = 128
     num_batches = ceil(train_len / map_batch)
 
-    #train_col = list(train_data.columns)
-    #_q1_id = train_col.index('question1')
-    #_q2_id = train_col.index('question2')
-
     def generator():
         #profiler = bprofile.BProfile('genpin.png')
         while True:
@@ -185,9 +175,6 @@ def make_test_generator(test_data):
     map_batch = 128
     num_batches = ceil(test_len / map_batch)
 
-    #test_col = list(test_data.columns)
-    #_q1_id = test_col.index('question1')
-    #_q2_id = test_col.index('question2')
     def generator():
         while True:
             for i_batch in np.array_split(test_data.as_matrix(), num_batches):
@@ -203,6 +190,7 @@ def make_test_generator(test_data):
 
     return generator(), period
 
+
 def target_map(row):
     target_arr = np.zeros(2)
     # 5th row contains "is_duplicate"
@@ -210,19 +198,10 @@ def target_map(row):
     target_arr[1] = row[5] == 1
     return target_arr
 
+
 def generate_features():
-    '''if training:
-        dataset = Train
-    else:
-        dataset = Test
-    '''
     dataset = Train
     sent = {}
-    '''
-    for i in range(len(Train)):
-        sent[i] = (set(word_tokenize(Train['question1'].iloc[i])),
-                    set(word_tokenize(Train['question2'].iloc[i])))
-    '''
     process_questions(sent, dataset.question1, 'Sentences part 1', dataset)
     process_questions(sent, dataset.question2, 'Sentences part 2', dataset)
     
@@ -258,7 +237,7 @@ def generate_features():
 
     okeys = list(onecount.keys())
     bkeys = list(bothcount.keys())
-    extra_features = 2 # The number of features outside of unique words within sentences
+    extra_features = 1 # The number of features outside of unique words within sentences
     num_features = len(onecount) + len(bothcount) + extra_features
     
     print(num_features)
@@ -305,15 +284,10 @@ def generate_features():
         return features
     return num_features, get_features
 
-
-def test_features():
-    dataset = Test
+# TODO if too much time overhead, could rewrite to inherit from generate_features()
+def testing_features():
+    dataset = Train
     sent = {}
-    '''
-    for i in range(len(Train)):
-        sent[i] = (set(word_tokenize(Train['question1'].iloc[i])),
-                    set(word_tokenize(Train['question2'].iloc[i])))
-    '''
     process_questions(sent, dataset.question1, 'Sentences part 1', dataset)
     process_questions(sent, dataset.question2, 'Sentences part 2', dataset)
     
@@ -349,7 +323,7 @@ def test_features():
 
     okeys = list(onecount.keys())
     bkeys = list(bothcount.keys())
-    extra_features = 2 # The number of features outside of unique words within sentences
+    extra_features = 1 # The number of features outside of unique words within sentences
     num_features = len(onecount) + len(bothcount) + extra_features
     
     print(num_features)
@@ -396,16 +370,17 @@ def test_features():
         return features
     return num_features, get_features
 
-
+# Generators for features and global wrappers for the generators
 num_features, get_features = generate_features()
-training = False
-test_num_features, test_features = test_features()
+test_num_features, test_features = testing_features()
 def global_get(*args, **kwargs):
     return get_features(*args, **kwargs)
-
 def global_test(*args, **kwargs):
     return test_features(*args, **kwargs)
-_global_pool = Pool()
+
+
+_global_pool = Pool() # For multiprocessing
+
 
 def getModel():
     ins = keras.layers.Input((num_features,))
@@ -436,32 +411,39 @@ def main():
     k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=3,
             validation_data=val_gen, validation_steps=val_len)
     ################# TESTING  ###################
-    training = False
-    test_gen, test_gen_len = make_test_generator(Test[:split])
+    test_gen, test_gen_len = make_test_generator(Test)
     #score = k.predict_generator(generator=gen, steps=gen_len)
     #print(score)
     #print(len(score))
 
     # score has both positives and negatives
-    score = k.predict_generator(generator=test_gen, steps=test_gen_len)
+    score = k.predict_generator(generator=test_gen, steps=test_gen_len, verbose=1)
+    test_qids = Test['test_id']
     submit_len = 0
-    score_fract = 10
+    score_fract = 12
     score_split = ceil(len(score) / score_fract)
-    for i in range(score_fract):
-        if i == 1:            
+    scores = np.array_split(score, score_fract) # list of length score_fract of numpy arrays
+    for i, arr in enumerate(scores):
+        if i == 0:
+            start_time = time.time()
             with open('submission.csv', 'w') as f:
                 f.write('test_id,_is_duplicate\n')
-                for i, row in enumerate(score[:score_split]):
-                    f.write("{},{}\n".format(i, row[0]))
+                for j, row in enumerate(arr):
+                    f.write("{},{}\n".format(test_qids.iloc[j], row[0]))
                     submit_len += 1
-            score = score[score_split:]
+            test_qids = test_qids[submit_len:]
+            print('part {} of {} complete'.format(i, score_fract))
+            print('{} seconds elapsed'.format((time.time() - start_time)))
         else:
+            start_time = time.time()
+            submit_len = 0
             with open('submission.csv', 'a') as f:
-                for i, row in enumerate(score[:score_split]):
-                    f.write("{},{}\n".format(submit_len + i, row[0],))
+                for j, row in enumerate(arr):
+                    f.write("{},{}\n".format(test_qids.iloc[j], row[0]))
                     submit_len += 1
-            score = score[score_split:]
-
+            test_qids = test_qids[submit_len:]
+            print('part {} of {} complete'.format(i, score_fract))
+            print('{} seconds elapsed'.format((time.time() - start_time)))
 
     #qidspkl = open('pickled/score.pkl', 'wb')
     #pickle.dump(score, qidspkl, protocol=pickle.HIGHEST_PROTOCOL)
