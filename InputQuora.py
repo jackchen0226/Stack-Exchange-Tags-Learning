@@ -11,14 +11,14 @@ from collections import defaultdict
 import re
 from string import punctuation
 from multiprocessing import Pool
-from math import ceil
+from math import ceil, floor
 import time
 
 Train = pd.read_csv("QuoraData/train.csv")
-Train = Train.fillna('')
+Train = Train.fillna('empty')
 #Train = Train[:9603]
 Test = pd.read_csv('QuoraData/test.csv')
-Test = Test.fillna('')
+Test = Test.fillna('empty')
 #Test = Test[:9603]
 stop_words = stopwords.words('english')
 
@@ -173,7 +173,8 @@ def make_test_generator(test_data):
     period = int(np.ceil(test_len / batch_size))
 
     map_batch = 128
-    num_batches = ceil(test_len / map_batch)
+    num_batches = round(test_len / map_batch)
+    print(num_batches)
 
     def generator():
         while True:
@@ -183,9 +184,13 @@ def make_test_generator(test_data):
                 data = np.asarray(data)
 
                 data_split = np.array_split(data, map_batch // batch_size)
-
+                data_len = 0
                 for i in range(len(data_split)):
-
+                    '''
+                    data_len += len(data_split[i])
+                    if data_len > 120:
+                        print(data_len)
+                    '''
                     yield data_split[i]
 
     return generator(), period
@@ -252,7 +257,6 @@ def generate_features():
         # 18973-27362 : A unique word that appears in both sentences
         l1 = set(text_to_wordlist(row[3]))
         l2 = set(text_to_wordlist(row[4]))
-        # q_id contains the ids for the respective questions which differ in Train and Test
         if l1 == l2:
             features[0] = True
 
@@ -266,12 +270,7 @@ def generate_features():
                 features[0] = 1.0
             else:
                 features[0] = 0.0
-        '''        
-        l1_nsw = set(text_to_word_sequence(row['question1']))
-        l2_nsw = set(text_to_word_sequence(row['question2']))
 
-        features[1] = float(len(l1_nsw.intersection(l2_nsw))) / float(len(l1_nsw.union(l2_nsw)))
-        '''
         for word in l1:
             if word in okeys and word not in l2:
                 features[okeys_to_index[word] + extra_features] = True
@@ -352,12 +351,7 @@ def testing_features():
                 features[0] = 1.0
             else:
                 features[0] = 0.0
-        '''        
-        l1_nsw = set(text_to_word_sequence(row['question1']))
-        l2_nsw = set(text_to_word_sequence(row['question2']))
 
-        features[1] = float(len(l1_nsw.intersection(l2_nsw))) / float(len(l1_nsw.union(l2_nsw)))
-        '''
         for word in l1:
             if word in okeys and word not in l2:
                 features[okeys_to_index[word] + extra_features] = True
@@ -412,27 +406,43 @@ def main():
             validation_data=val_gen, validation_steps=val_len)
     ################# TESTING  ###################
     test_gen, test_gen_len = make_test_generator(Test)
-    #score = k.predict_generator(generator=gen, steps=gen_len)
-    #print(score)
-    #print(len(score))
-
     # score has both positives and negatives
     score = k.predict_generator(generator=test_gen, steps=test_gen_len, verbose=1)
+    print(len(score))
     test_qids = Test['test_id']
-    submit_len = 0
-    score_fract = 12
+    total_len = 0
+    score_fract = 5
     score_split = ceil(len(score) / score_fract)
     scores = np.array_split(score, score_fract) # list of length score_fract of numpy arrays
+    print(len(scores))
+    print(len(scores[4][1894]))
     for i, arr in enumerate(scores):
         if i == 0:
             start_time = time.time()
+            submit_len = 0
             with open('submission.csv', 'w') as f:
                 f.write('test_id,_is_duplicate\n')
                 for j, row in enumerate(arr):
                     f.write("{},{}\n".format(test_qids.iloc[j], row[0]))
                     submit_len += 1
             test_qids = test_qids[submit_len:]
-            print('part {} of {} complete'.format(i, score_fract))
+            total_len += submit_len
+            print('part {} of {} complete'.format(i+1, score_fract))
+            print('{} seconds elapsed'.format((time.time() - start_time)))
+        elif i == (score_fract - 1):
+            start_time = time.time()
+            submit_len = 0
+            with open('submission.csv', 'a') as f:
+                try:
+                    for j, row in enumerate(arr):
+                        f.write("{},{}\n".format(test_qids.iloc[j], row[0]))
+                        submit_len += 1
+                    j += 1
+                    f.write("{},{}\n".format(test_qids.iloc[j], row[0]))
+                except IndexError:
+                    f.write("{},{}\n".format(total_len + j, row[0]))
+            test_qids = test_qids[submit_len:]
+            print('part {} of {} complete'.format(i+1, score_fract))
             print('{} seconds elapsed'.format((time.time() - start_time)))
         else:
             start_time = time.time()
@@ -442,12 +452,9 @@ def main():
                     f.write("{},{}\n".format(test_qids.iloc[j], row[0]))
                     submit_len += 1
             test_qids = test_qids[submit_len:]
-            print('part {} of {} complete'.format(i, score_fract))
+            total_len += submit_len
+            print('part {} of {} complete'.format(i+1, score_fract))
             print('{} seconds elapsed'.format((time.time() - start_time)))
-
-    #qidspkl = open('pickled/score.pkl', 'wb')
-    #pickle.dump(score, qidspkl, protocol=pickle.HIGHEST_PROTOCOL)
-    #qidspkl.close()
     
 
 if __name__ == '__main__':
