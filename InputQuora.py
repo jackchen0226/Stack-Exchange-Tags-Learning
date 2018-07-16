@@ -16,10 +16,10 @@ import time
 
 Train = pd.read_csv("QuoraData/train.csv")
 Train = Train.fillna('empty')
-#Train = Train[:9603]
+#Train = Train[:9607]
 Test = pd.read_csv('QuoraData/test.csv')
 Test = Test.fillna('empty')
-#Test = Test[:9603]
+#Test = Test[:9607]
 stop_words = stopwords.words('english')
 
 # Currie32's text cleaning
@@ -169,29 +169,37 @@ def make_train_generator(train_data):
 
 def make_test_generator(test_data):
     batch_size = 32
-    test_len = len(test_data)
-    period = int(np.ceil(test_len / batch_size))
-
     map_batch = 128
-    num_batches = round(test_len / map_batch)
-    print(num_batches)
+    test_len = len(test_data)
+    period = ceil(test_len / map_batch) * (map_batch / batch_size) # for rounding purposes
+    #num_batches = round(test_len / map_batch)
+    #print(num_batches)
 
     def generator():
+        test_arr = test_data.as_matrix()
         while True:
-            for i_batch in np.array_split(test_data.as_matrix(), num_batches):
-                b_len = len(i_batch)
+            i = 0
+            while i < test_len:
+                n = min(map_batch, test_len - i)
+                if n < map_batch:
+                    i_batch = test_arr
+                else:
+                    i_batch = test_arr[:n]
+                    test_arr = test_arr[n:]
                 data = list(_global_pool.map(global_test, i_batch)) # Should be 128 arrays
                 data = np.asarray(data)
-
+                
                 data_split = np.array_split(data, map_batch // batch_size)
-                data_len = 0
+                #data_len = 0
+                i += n
                 for i in range(len(data_split)):
                     '''
                     data_len += len(data_split[i])
-                    if data_len > 120:
+                    if data_len < 32:
                         print(data_len)
                     '''
                     yield data_split[i]
+                    
 
     return generator(), period
 
@@ -399,11 +407,10 @@ def getModel():
 
 def main():
     k = getModel()
-    split = len(Train) * 9 // 10
-    gen, gen_len = make_train_generator(Train[:split])
-    val_gen, val_len = make_train_generator(Train[split:])
-    k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=3,
-            validation_data=val_gen, validation_steps=val_len)
+    #split = len(Train) * 9 // 10
+    gen, gen_len = make_train_generator(Train)
+    #val_gen, val_len = make_train_generator(Train[split:])
+    k.fit_generator(generator=gen, steps_per_epoch=gen_len, epochs=3)
     ################# TESTING  ###################
     test_gen, test_gen_len = make_test_generator(Test)
     # score has both positives and negatives
@@ -414,16 +421,14 @@ def main():
     score_fract = 5
     score_split = ceil(len(score) / score_fract)
     scores = np.array_split(score, score_fract) # list of length score_fract of numpy arrays
-    print(len(scores))
-    print(len(scores[4][1894]))
     for i, arr in enumerate(scores):
         if i == 0:
             start_time = time.time()
             submit_len = 0
-            with open('submission.csv', 'w') as f:
-                f.write('test_id,_is_duplicate\n')
+            with open('submission4.csv', 'w') as f:
+                f.write('test_id,is_duplicate\n')
                 for j, row in enumerate(arr):
-                    f.write("{},{}\n".format(test_qids.iloc[j], row[0]))
+                    f.write("{},{}\n".format(test_qids.iloc[j], row[1]))
                     submit_len += 1
             test_qids = test_qids[submit_len:]
             total_len += submit_len
@@ -432,24 +437,20 @@ def main():
         elif i == (score_fract - 1):
             start_time = time.time()
             submit_len = 0
-            with open('submission.csv', 'a') as f:
-                try:
-                    for j, row in enumerate(arr):
-                        f.write("{},{}\n".format(test_qids.iloc[j], row[0]))
-                        submit_len += 1
-                    j += 1
-                    f.write("{},{}\n".format(test_qids.iloc[j], row[0]))
-                except IndexError:
-                    f.write("{},{}\n".format(total_len + j, row[0]))
+            with open('submission4.csv', 'a') as f:
+                # basically spaghetti
+                for j, row in enumerate(arr):
+                    f.write("{},{}\n".format(test_qids.iloc[j], row[1]))
+                    submit_len += 1
             test_qids = test_qids[submit_len:]
             print('part {} of {} complete'.format(i+1, score_fract))
             print('{} seconds elapsed'.format((time.time() - start_time)))
         else:
             start_time = time.time()
             submit_len = 0
-            with open('submission.csv', 'a') as f:
+            with open('submission4.csv', 'a') as f:
                 for j, row in enumerate(arr):
-                    f.write("{},{}\n".format(test_qids.iloc[j], row[0]))
+                    f.write("{},{}\n".format(test_qids.iloc[j], row[1]))
                     submit_len += 1
             test_qids = test_qids[submit_len:]
             total_len += submit_len
